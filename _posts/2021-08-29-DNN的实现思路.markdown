@@ -18,54 +18,89 @@ categories: DeepLearning
 </head>
 
 
-最近打算实现一个DNN计算的实现，并尝试对实现做优化加速计算。
+# DNN (Deep Neural Networks, 深度神经网络)
 
-基本思路是：
+最近打算实现一个DNN计算的实现，并尝试对实现做优化加速计算，这里首先写一篇理论知识的回忆，列出在代码实现过程中所需要的关键公式，如果对DNN的推导过程还不了解，可以参考文章末尾的列出的其他博主的博客。
+
+## 基本思路
+
+### 实现思路
 
 - 首先使用python实现一个最简单的版本，并对数据结构做优化。
 - 然后按照python的实现写一个C++的版本。
 - 最后对C++版本的代码进行优化。
 
-由于目前缺少nv显卡，amd显卡的Rocm又不支持windows平台，因此暂时只优化CPU版本，优化CPU版本的主要方法是使用模板多态+AVX进行优化。
+### 优化思路
 
-## DNN (Deep Neural Networks, 深度神经网络)
+CPU版本将会使用C++模板多态和AVX对整个计算过程进行优化。
 
-本文主要讲解DNN计算中主要涉及的公式计算和代码接口定义，具体实现和优化会在之后的文章中讲解。
+显卡方面由于目前缺少nv显卡，amd显卡的Rocm又不支持windows平台，暂时搁置。
 
-### 符号
 
-- 向量和矩阵使用大写字母表示
-- 标量使用小写字母表示
-- 函数(如激活函数等)使用希腊小写字母表示
+## 符号
 
-```
-说明：暂时还未增加LaTex插件，因此数学公式可能会比较丑，之后增加插件后会做修正
-```
+- 向量和矩阵使用大写字母表示(例：$X,Y,Z$)
+- 标量使用小写字母表示(例：$x,y,z$)
+- 函数(如激活函数等)使用希腊小写字母表示(例：$\sigma,\beta,\theta$)
 
-### 正向计算公式
 
-下图是一个简单的只有3层的DNN，分别是输入层`X=(x1,x2,x3,x4,x5)`，隐藏层`H=(h1,h2,h3,h4)`，输出层`O=(o1,o2)`：
+## 正向计算公式
+
+
+下图是一个简单的只有3层的DNN，分别是输入层
+$X=\begin{bmatrix} x1 & x2 & x3 & x4 & x5 \end{bmatrix}$
+，隐藏层
+$H=\begin{bmatrix} h1 & h2 & h3 & h4 \end{bmatrix}$
+，输出层
+$O=\begin{bmatrix} o1 & o2 \end{bmatrix}$
+：
 
 ![DNN](/Images/DNN_1.png)
 
-对于上述DNN网络，分别有`H=σ(WX+B)`和`O=σ(WH+B)`，即对于DNN的输入层外的任意一层有：`O=σ(WX+B)`，其中`X`为本层的输入向量,`W`为本层的权
-重系数矩阵，`B`为本层的偏置向量，`σ`为本层的激活函数,`O`为本层的输出向量，且上层的输出为下层的输入。
+对于上述DNN网络，分别有 $H=\sigma(WX+B)$ 和 $O=\sigma(WH+B)$ ，即对于DNN的输入层外的任意一层有： $O=\sigma(WX+B)$ ，其中 $X$ 为本层的输入向量, $W$ 为本层的权重系数矩阵， $B$ 为本层的偏置向量， $\sigma$ 为本层的激活函数, $O$ 为本层的输出向量，且上层的输出为下层的输入。
 
-因此在正向计算过程中，我们将主要实现上述公式。
+因此在正向计算过程中，我们将主要实现公式：
 
-### 反向计算公式
+$$O=\sigma(WX+B)$$
+
+## 反向计算公式
 
 Loss暂时只实现均方误差，下面只讲均方误差的计算公式，其他Loss函数之后会陆续补充。
 
-##### 均方误差(mean squared error)
+### 均方误差(mean squared error)
 
-对于任意一层有：E=1/2(O-Y)^2，其中O为本层输出，Y为期望输出
+对于任意一层有：
+$E=\frac{1}{2}(O-S)^2$
+，其中 $O$ 为模型输出， $S$ 为正确结果。
 
-求E对W、B、X的导数：
+求 $E$ 对 $W、B$ 的导数，令 $T=WX+B$ ：
 
-- `E'(W)=(O-Y)⊙σ'⊙X`
-- `E'(B)=(O-Y)⊙σ'`
+- $\frac{\partial E}{\partial W}=(O-S)\odot\frac{\partial \sigma}{\partial T} \odot X$
+- $\frac{\partial E}{\partial B}=(O-S)\odot\frac{\partial \sigma}{\partial T}$
 
-令`δ=(O-Y)⊙σ'`可得第l层的loss导数为：`E'(Wl)=δl⊙X`，`E'(Bl)=δl`，推导可得`δl=W*diag(σ')*δl+1`(详细的推导过程可以参考其他博客，这里不再赘述)。
+令
+$\delta=(O-S)\odot\frac{\partial \sigma}{\partial T}$
+可得第 $l$ 层的loss导数为：
+$\frac{\partial E_l}{\partial W_l}=\delta_l \odot X_l$
+，
+$\frac{\partial E_l}{\partial W_l}=\delta_l$
+，推导可得
+$\delta_l=W_{l+1}^T\cdot\delta_{l+1}\odot\frac{\partial \sigma_l}{\partial T_l}$
+(详细的推导过程可以参考其他博客，这里不再赘述)。
 
-因此在反向计算过程中，我们将主要实现`E'(Wl)=δl⊙X`，`E'(Bl)=δl`，`δl=W*diag(σ')*δl+1`这三个公式。
+因此对于一个**n层的网络**来说，在反向计算过程中，我们将主要实现：
+
+$$\delta_n=\frac{\partial \sigma}{\partial T}\odot(O-S)$$
+
+$$\delta_l=W_{l+1}^T\cdot\delta_{l+1}\odot\frac{\partial \sigma_l}{\partial T_l}$$
+
+$$\frac{\partial E_l}{\partial W_l}=\delta_l \odot X_l$$
+
+$$\frac{\partial E_l}{\partial W_l}=\delta_l$$
+
+
+## 参考：
+
+[DNN介绍及公式推导](https://zhuanlan.zhihu.com/p/136819059)
+
+[数据挖掘入门系列教程（七点五）之神经网络介绍](https://www.cnblogs.com/xiaohuiduan/p/12623925.html)
