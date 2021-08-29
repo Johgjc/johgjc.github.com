@@ -5,6 +5,18 @@ date:       2021-08-29 00:22:00 +0800
 categories: DeepLearning
 ---
 
+<head>
+    <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+    <script type="text/x-mathjax-config">
+        MathJax.Hub.Config({
+            tex2jax: {
+            skipTags: ['script', 'noscript', 'style', 'textarea', 'pre'],
+            inlineMath: [['$','$']]
+            }
+        });
+    </script>
+</head>
+
 
 最近打算实现一个DNN计算的实现，并尝试对实现做优化加速计算。
 
@@ -57,4 +69,3 @@ Loss暂时只实现均方误差，下面只讲均方误差的计算公式，其�
 令`δ=(O-Y)⊙σ'`可得第l层的loss导数为：`E'(Wl)=δl⊙X`，`E'(Bl)=δl`，推导可得`δl=W*diag(σ')*δl+1`(详细的推导过程可以参考其他博客，这里不再赘述)。
 
 因此在反向计算过程中，我们将主要实现`E'(Wl)=δl⊙X`，`E'(Bl)=δl`，`δl=W*diag(σ')*δl+1`这三个公式。
-
